@@ -11,7 +11,7 @@ const Messages: React.FC = () => {
   return (
     // Keep the min-h-screen here as AppLayout is not used
     <div className="min-h-screen bg-gray-50">
-      <AppNavbar /> {/* Keep the navbar call */}
+{/* Keep the navbar call */}
       {/* FIX: Added 'pt-16' which applies padding-top on all screen sizes.
         Since the navbar is fixed-top on desktop (md:) and fixed-bottom
         on mobile, we need the padding at the top on desktop.

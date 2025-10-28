@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquare, Settings } from 'lucide-react';
+// Import the Home icon
+import { MessageSquare, Settings, Home } from 'lucide-react';
 import SettingsDropdown from './SettingsDropdown';
 import MobileSettingsSidebar from './MobileSettingsSidebar';
 
@@ -18,12 +19,10 @@ const AppNavbar: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Handler specifically for opening the mobile sidebar
   const openMobileSidebar = () => {
     setShowSettings(true);
   };
 
-  // Handler specifically for toggling the desktop dropdown
   const toggleDesktopDropdown = () => {
     setShowSettings((prev) => !prev);
   };
@@ -53,17 +52,15 @@ const AppNavbar: React.FC = () => {
               >
                 <MessageSquare size={24} />
               </Link>
-              {/* Desktop Settings Dropdown */}
               <div className="relative" ref={settingsRef}>
                 <button
-                  onClick={toggleDesktopDropdown} // Use specific handler
+                  onClick={toggleDesktopDropdown}
                   className="text-gray-500 hover:text-pink-500 p-2 rounded-full hover:bg-pink-50"
                 >
                   <Settings size={24} />
                 </button>
-                {/* Conditionally render dropdown ONLY for desktop view */}
                 {showSettings && (
-                  <div className="hidden md:block"> {/* Hide on mobile */}
+                  <div className="hidden md:block">
                     <SettingsDropdown onClose={() => setShowSettings(false)} />
                   </div>
                 )}
@@ -73,15 +70,22 @@ const AppNavbar: React.FC = () => {
 
           {/* Mobile Bottom Navbar */}
           <div className="flex md:hidden justify-around items-center h-16">
+            {/* ADDED: Home Button for Mobile */}
+            <Link
+              to="/dashboard"
+              className="text-gray-500 hover:text-pink-500 p-3 rounded-full hover:bg-pink-50"
+            >
+              <Home size={28} />
+            </Link>
+
              <Link
               to="/messages"
               className="text-gray-500 hover:text-pink-500 p-3 rounded-full hover:bg-pink-50"
             >
               <MessageSquare size={28} />
             </Link>
-            {/* Mobile Settings Sidebar Trigger */}
             <button
-              onClick={openMobileSidebar} // Use specific handler
+              onClick={openMobileSidebar}
               className="text-gray-500 hover:text-pink-500 p-3 rounded-full hover:bg-pink-50"
             >
               <Settings size={28} />
@@ -90,11 +94,9 @@ const AppNavbar: React.FC = () => {
         </div>
       </nav>
 
-      {/* Mobile Sidebar - Wrapped to hide on desktop */}
-      {/* FIX: Added 'md:hidden' class here */}
       <div className="md:hidden">
         <MobileSettingsSidebar
-          isOpen={showSettings} // State now controls sidebar visibility on mobile
+          isOpen={showSettings}
           onClose={() => setShowSettings(false)}
         />
       </div>

@@ -52,3 +52,57 @@ export const updateUserProfile = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 };
+export const getPotentialMatches = async (req, res) => {
+  try {
+    const currentUserId = req.user.userId; // Get user ID from authenticated token
+
+    // Query to find users that the current user hasn't swiped on yet,
+    // excluding the current user themselves.
+    // Adjust profile_picture_url based on your actual column name
+    const result = await pool.query(
+      `SELECT id, name, age, bio, profile_picture_url
+       FROM users
+       WHERE id != $1
+       AND id NOT IN (
+           SELECT swiped_id FROM swipes WHERE swiper_id = $1
+       )
+       ORDER BY random() -- Or any other logic for ordering
+       LIMIT 10 -- Limit the number of profiles sent at once
+      `,
+      [currentUserId]
+    );
+
+    res.json({ users: result.rows });
+  } catch (error) {
+    console.error('Get potential matches error:', error);
+    res.status(500).json({ error: 'Server error fetching potential matches' });
+  }
+};
+export const recordSwipe = async (req, res) => {
+  try {
+    const swiperId = req.user.userId;
+    const { swipedUserId, isLike } = req.body;
+
+    if (swiperId === undefined || swipedUserId === undefined || isLike === undefined) {
+      return res.status(400).json({ error: 'Missing swiperId, swipedUserId, or isLike' });
+    }
+
+    // Insert the swipe record
+    await pool.query(
+      `INSERT INTO swipes (swiper_id, swiped_id, is_like)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (swiper_id, swiped_id) DO UPDATE SET is_like = $3, created_at = NOW()`,
+      [swiperId, swipedUserId, isLike]
+    );
+
+    // --- TODO: Check for a match ---
+    // If isLike is true, check if the other user (swipedUserId) has also liked swiperId
+    // If yes, insert into the 'matches' table
+
+    res.status(201).json({ message: 'Swipe recorded' });
+
+  } catch (error) {
+    console.error('Record swipe error:', error);
+    res.status(500).json({ error: 'Server error recording swipe' });
+  }
+};

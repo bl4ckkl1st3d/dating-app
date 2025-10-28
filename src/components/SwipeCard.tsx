@@ -2,10 +2,10 @@ import React from "react";
 
 interface UserProfile {
   id: number;
-  name: string;
-  age: number;
-  bio: string;
-  imageUrl: string;
+  name?: string;
+  age?: number;
+  bio?: string;
+  imageUrl?: string;
 }
 
 interface SwipeCardProps {
