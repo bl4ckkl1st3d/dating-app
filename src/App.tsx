@@ -23,7 +23,7 @@ const AppRoutes: React.FC = () => {
     <Routes>
       {/* Logged-out routes */}
       <Route element={<LoggedOutLayout />}>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<EditProfile />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
       </Route>

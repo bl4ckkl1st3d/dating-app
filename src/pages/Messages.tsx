@@ -1,5 +1,5 @@
 import React from 'react';
-import AppNavbar from '../components/AppNavbar';
+import AppNavbar from '../components/AppNavbar'; // Keep the navbar import
 
 const Messages: React.FC = () => {
   // Mock data
@@ -9,9 +9,17 @@ const Messages: React.FC = () => {
   ];
 
   return (
+    // Keep the min-h-screen here as AppLayout is not used
     <div className="min-h-screen bg-gray-50">
-      <AppNavbar />
-      <main className="max-w-2xl mx-auto py-8 px-4 pb-10">
+      <AppNavbar /> {/* Keep the navbar call */}
+      {/* FIX: Added 'pt-16' which applies padding-top on all screen sizes.
+        Since the navbar is fixed-top on desktop (md:) and fixed-bottom
+        on mobile, we need the padding at the top on desktop.
+        On mobile, the content will scroll above the bottom navbar,
+        but the 'pb-10' (or 'pb-20' if needed) ensures space at the bottom.
+      */}
+      <main className="max-w-2xl mx-auto py-8 px-4 pb-20 md:pb-10"> {/* Adjusted padding */}
+
         <h1 className="text-3xl font-bold text-gray-800 mb-6">Messages</h1>
         <div className="bg-white rounded-lg shadow border border-gray-200">
           <ul className="divide-y divide-gray-200">

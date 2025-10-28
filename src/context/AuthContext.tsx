@@ -7,6 +7,7 @@ interface User {
   name: string;
   age?: number;
   bio?: string;
+  profile_picture_url?: string;
 }
 
 interface AuthContextType {
