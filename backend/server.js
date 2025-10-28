@@ -60,3 +60,6 @@ app.listen(PORT, () => { //
 });
 
 // Removed duplicate const uploadsPath = path.join(__dirname, 'uploads');
+
+
+export default app; 
