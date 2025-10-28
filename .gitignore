@@ -27,3 +27,4 @@ backend/*.log
 *.njsproj
 *.sln
 *.sw?
+src/pages/Dashboard2.tsx
