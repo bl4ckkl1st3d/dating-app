@@ -120,7 +120,7 @@ export const logout = async (req, res) => {
 export const getCurrentUser = async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, email, name, age, bio, created_at FROM users WHERE id = $1',
+      'SELECT id, email, name, age, bio, created_at,profile_picture_url FROM users WHERE id = $1',
       [req.user.userId]
     );
 
