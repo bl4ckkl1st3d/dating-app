@@ -167,7 +167,7 @@ export const uploadProfilePicture = async (req, res) => {
       Key: newS3Key,
       Body: req.file.buffer, // Use buffer from memoryStorage
       ContentType: req.file.mimetype,
-      ACL: 'public-read' // Make file publicly readable (adjust if using signed URLs)
+      /* ACL: 'public-read' */ // Make file publicly readable (adjust if using signed URLs)
     };
 
     console.log(`[S3 Upload] Uploading ${newS3Key} to bucket ${BUCKET_NAME}...`);
