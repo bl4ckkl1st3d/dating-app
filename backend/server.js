@@ -27,7 +27,6 @@ app.use(express.urlencoded({ extended: true })); //
 // Serve Uploaded Files Statically
 const uploadsPath = path.join(__dirname, 'uploads');
 console.log(`📂 [Server] Attempting to serve static files from: ${uploadsPath} at /uploads`);
-app.use('/uploads', express.static(uploadsPath)); //
 
 // Test database connection
 pool.query('SELECT NOW()') //

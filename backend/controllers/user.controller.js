@@ -2,6 +2,8 @@ import pool from '../config/database.js';
 import path from 'path'; // Need path for file URL construction
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
+import AWS from 'aws-sdk'; // Import AWS SDK
+import { v4 as uuidv4 } from 'uuid';
 
 // Get user profile
 
@@ -10,6 +12,9 @@ const __filename = fileURLToPath(import.meta.url);
 
 const __dirname = path.dirname(__filename);
 const UPLOADS_DIR = path.join(__dirname, '../uploads');
+
+const s3 = new AWS.S3({ apiVersion: '2006-03-01' });
+const BUCKET_NAME = process.env.S3_BUCKET_NAME;
 
 export const getUserProfile = async (req, res) => {
   try {
@@ -111,109 +116,112 @@ export const updateUserProfile = async (req, res) => {
   }
 };
 export const uploadProfilePicture = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const userId = req.user.userId;
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
 
-        // Verify user owns this profile
-        if (userId !== parseInt(id)) {
-          return res.status(403).json({ error: 'You can only update your own profile picture' });
-        }
-
-        // Check if file was uploaded by multer
-        if (!req.file) {
-          return res.status(400).json({ error: 'No profile picture file uploaded.' });
-        }
-
-        // --- Step 1: Get the current profile picture URL before updating ---
-        let oldImageUrl = null;
-        try {
-            const currentUserData = await pool.query(
-                'SELECT profile_picture_url FROM users WHERE id = $1', //
-                [userId]
-            );
-            if (currentUserData.rows.length > 0 && currentUserData.rows[0].profile_picture_url) {
-                oldImageUrl = currentUserData.rows[0].profile_picture_url;
-            }
-        } catch (dbError) {
-             console.error(`[Upload] Error fetching old image URL for user ${userId}:`, dbError);
-             // Decide if you want to proceed without deleting or return an error
-             // For now, we'll log and proceed
-        }
-        // --- End Step 1 ---
-
-        // Construct the URL path for the *new* file
-        const newImageUrl = `/uploads/${req.file.filename}`; // Relative path for DB/client
-        console.log(`[Upload] User ${userId} uploaded ${req.file.filename}. New URL: ${newImageUrl}`);
-
-        // --- Step 2: Update the database with the new URL ---
-        const result = await pool.query(
-          `UPDATE users
-           SET profile_picture_url = $1, updated_at = NOW()
-           WHERE id = $2
-           RETURNING id, email, name, age, bio, profile_picture_url, created_at, updated_at`, //
-          [newImageUrl, userId]
-        );
-
-        if (result.rows.length === 0) {
-             console.error(`[Upload] User ${userId} not found during DB update for new image.`);
-             // Attempt to delete the newly uploaded file since DB update failed
-             try {
-                 const newFilePath = path.join(UPLOADS_DIR, req.file.filename);
-                 await fs.unlink(newFilePath);
-                 console.log(`[Upload] Cleaned up orphaned file: ${req.file.filename}`);
-             } catch (cleanupError) {
-                 console.error(`[Upload] Error cleaning up orphaned file ${req.file.filename}:`, cleanupError);
-             }
-             return res.status(404).json({ error: 'User not found during picture update.' });
-        }
-        // --- End Step 2 ---
-
-
-        // --- Step 3: Delete the old image file (if it existed) ---
-        if (oldImageUrl && oldImageUrl.startsWith('/uploads/')) { // Check if it's a path we manage
-            const oldFilename = path.basename(oldImageUrl); // Extract filename from URL path
-            const oldFilePath = path.join(UPLOADS_DIR, oldFilename);
-
-            console.log(`[Upload] Attempting to delete old image for user ${userId}: ${oldFilePath}`);
-            try {
-                await fs.unlink(oldFilePath);
-                console.log(`[Upload] Successfully deleted old image: ${oldFilename}`);
-            } catch (unlinkError) {
-                // Log error but don't fail the request if deletion fails (e.g., file already gone)
-                if (unlinkError.code === 'ENOENT') {
-                    console.warn(`[Upload] Old image not found, deletion skipped: ${oldFilename}`);
-                } else {
-                    console.error(`[Upload] Error deleting old image ${oldFilename}:`, unlinkError);
-                }
-            }
-        } else if (oldImageUrl) {
-            console.log(`[Upload] Old image URL (${oldImageUrl}) is not a local upload, skipping deletion.`);
-        }
-        // --- End Step 3 ---
-
-
-        // Send success response
-        res.json({
-            message: 'Profile picture updated successfully',
-            imageUrl: newImageUrl, // Send back the new relative URL
-            user: result.rows[0] // Send back the updated user data
-        });
-
-    } catch (error) {
-        console.error('Upload profile picture error:', error);
-        // If an error occurred *after* file was uploaded but before response, try deleting the new file
-        if (req.file) {
-             try {
-                 const newFilePath = path.join(UPLOADS_DIR, req.file.filename);
-                 await fs.unlink(newFilePath);
-                 console.log(`[Upload] Cleaned up file due to error: ${req.file.filename}`);
-             } catch (cleanupError) {
-                 console.error(`[Upload] Error cleaning up file ${req.file.filename} after main error:`, cleanupError);
-             }
-        }
-        res.status(500).json({ error: 'Server error uploading profile picture.' });
+    if (userId !== parseInt(id)) {
+      return res.status(403).json({ error: 'You can only update your own profile picture' });
     }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No profile picture file uploaded.' });
+    }
+
+    if (!BUCKET_NAME) {
+        console.error('[S3 Upload] S3_BUCKET_NAME environment variable not set.');
+        return res.status(500).json({ error: 'Server configuration error (S3 Bucket).' });
+    }
+
+    // --- Get current profile picture URL to delete later ---
+    let oldImageUrl = null;
+    let oldS3Key = null;
+    try {
+      const currentUserData = await pool.query(
+        'SELECT profile_picture_url FROM users WHERE id = $1',
+        [userId]
+      );
+      if (currentUserData.rows.length > 0 && currentUserData.rows[0].profile_picture_url) {
+        oldImageUrl = currentUserData.rows[0].profile_picture_url;
+        // Attempt to extract the S3 key (path within the bucket) from the old URL
+        try {
+            const urlParts = new URL(oldImageUrl);
+            // Example: https://bucket-name.s3.region.amazonaws.com/profile-pictures/user-1-uuid.jpg
+            // Key would be 'profile-pictures/user-1-uuid.jpg' (remove leading '/')
+            oldS3Key = urlParts.pathname.substring(1);
+        } catch (urlError) {
+            console.warn(`[S3 Upload] Could not parse old image URL to get S3 key: ${oldImageUrl}`, urlError);
+        }
+      }
+    } catch (dbError) {
+      console.error(`[S3 Upload] Error fetching old image URL for user ${userId}:`, dbError);
+      // Continue upload even if fetching old URL fails
+    }
+
+    // --- Upload new file to S3 ---
+    const fileExtension = req.file.mimetype.split('/')[1];
+    const newS3Key = `profile-pictures/user-${userId}-${uuidv4()}.${fileExtension}`; // Unique key
+
+    const uploadParams = {
+      Bucket: BUCKET_NAME,
+      Key: newS3Key,
+      Body: req.file.buffer, // Use buffer from memoryStorage
+      ContentType: req.file.mimetype,
+      ACL: 'public-read' // Make file publicly readable (adjust if using signed URLs)
+    };
+
+    console.log(`[S3 Upload] Uploading ${newS3Key} to bucket ${BUCKET_NAME}...`);
+    const s3UploadResponse = await s3.upload(uploadParams).promise();
+    const newImageUrl = s3UploadResponse.Location; // Get the public URL from S3
+    console.log(`[S3 Upload] Successfully uploaded. URL: ${newImageUrl}`);
+
+
+    // --- Update database with the S3 URL ---
+    const result = await pool.query(
+      `UPDATE users
+       SET profile_picture_url = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, email, name, age, bio, profile_picture_url, created_at, updated_at`,
+      [newImageUrl, userId]
+    );
+
+    if (result.rows.length === 0) {
+      console.error(`[S3 Upload] User ${userId} not found during DB update.`);
+      // Try to delete the file just uploaded to S3 if DB update failed
+      try {
+          console.warn(`[S3 Upload] Attempting to delete recently uploaded file ${newS3Key} due to DB error...`);
+          await s3.deleteObject({ Bucket: BUCKET_NAME, Key: newS3Key }).promise();
+          console.warn(`[S3 Upload] Deleted ${newS3Key} from S3.`);
+      } catch (deleteError) {
+          console.error(`[S3 Upload] FAILED to delete ${newS3Key} from S3 after DB error:`, deleteError);
+      }
+      return res.status(404).json({ error: 'User not found during picture update.' });
+    }
+
+    // --- Delete old image from S3 (if it existed and we got the key) ---
+    if (oldS3Key) {
+      console.log(`[S3 Upload] Attempting to delete old S3 object: ${oldS3Key}`);
+      try {
+        await s3.deleteObject({ Bucket: BUCKET_NAME, Key: oldS3Key }).promise();
+        console.log(`[S3 Upload] Successfully deleted old object: ${oldS3Key}`);
+      } catch (deleteError) {
+        console.error(`[S3 Upload] Error deleting old S3 object ${oldS3Key}:`, deleteError);
+        // Log error but don't fail the overall request
+      }
+    }
+
+    // --- Send success response ---
+    res.json({
+      message: 'Profile picture updated successfully',
+      imageUrl: newImageUrl, // Send back the S3 URL
+      user: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Upload profile picture error (S3):', error);
+    res.status(500).json({ error: 'Server error uploading profile picture.' });
+    // Note: No local file to clean up here as it was in memory
+  }
 };
 export const getPotentialMatches = async (req, res) => {
   try {

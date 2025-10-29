@@ -40,7 +40,7 @@ const fileFilter = (req, file, cb) => {
 
 // Configure multer instance
 const upload = multer({
-  storage: storage,
+  storage: multer.memoryStorage(), // <--- CHANGE HERE
   limits: {
     fileSize: 5 * 1024 * 1024 // 5MB limit
   },
@@ -67,6 +67,7 @@ export const handleUploadError = (err, req, res, next) => {
      // Use the error message from the fileFilter if available
     return res.status(400).json({ error: err.message || 'Invalid file type or unknown upload error.' });
   }
+  
   // Everything went fine, proceed.
   next();
 };
