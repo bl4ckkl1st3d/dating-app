@@ -1,68 +1,32 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext.tsx';
-import AuthForm from '../components/AuthForm.tsx';
-import FormInput from '../components/FormInput.tsx';
+import React from 'react';
+import LoginForm from '../components/LoginForm';
 
 const Login: React.FC = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      await login(email, password);
-      // Redirect handled by useAuth
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to login. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <AuthForm
-      title="Welcome Back!"
-      subtitle="Login to your account"
-      onSubmit={handleSubmit}
-      submitText="Login"
-      loading={loading}
-      error={error}
-      footer={
-        <p>
-          Don't have an account?{' '}
-          <Link to="/signup" className="text-pink-500 hover:text-pink-600 font-semibold">
-            Sign Up
-          </Link>
-        </p>
-      }
-    >
-      <FormInput
-        label="Email"
-        type="email"
-        name="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        required
-        placeholder="Enter your email"
-      />
+    <div className="relative h-screen w-full">
+      {/* -------------------- TOP (60%) -------------------- */}
+      <div className="h-[60%] grid grid-cols-3">
+        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/4.jpg')" }}><div className="absolute inset-0 bg-black/50"></div></div>
+        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/5.jpg')" }}></div>
+        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/3.jpg')" }}></div>
+      </div>
 
-      <FormInput
-        label="Password"
-        type="password"
-        name="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        required
-        placeholder="Enter your password"
-      />
-    </AuthForm>
+      {/* -------------------- BOTTOM (40%) -------------------- */}
+      <div className="h-[40%] grid grid-cols-5">
+        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/10.jpg')" }}></div>
+        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/7.jpg')" }}></div>
+        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/6.jpg')" }}></div>
+        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/9.jpg')" }}></div>
+        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/8.jpg')" }}></div>
+      </div>
+
+      {/* -------------------- CENTERED FORM -------------------- */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="w-[420px] p-10 bg-white rounded-2xl shadow-2xl">
+          <LoginForm />
+        </div>
+      </div>
+    </div>
   );
 };
 

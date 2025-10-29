@@ -22,10 +22,10 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
   max:5,
   idleTimeoutMillis: 30000,
-  ssl: {
+  /* ssl: {
     rejectUnauthorized: false // Use false for self-signed certs or if CA validation is tricky.
                                // For production, consider using Aiven's CA cert properly.
-  }
+  } */
 });
 
 // Test database connection
