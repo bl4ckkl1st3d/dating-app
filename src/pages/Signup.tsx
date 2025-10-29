@@ -1,23 +1,30 @@
 import React from 'react';
 import SignupForm from '../components/SignupForm';
-
+import image6 from '../img/6.jpg';
+import image7 from '../img/7.jpg';
+import image8 from '../img/8.jpg';
+import image9 from '../img/9.jpg';
+import image10 from '../img/10.jpg';
+import image4 from '../img/4.jpg';
+import image5 from '../img/5.jpg';
+import image3 from '../img/3.jpg';
 const Signup: React.FC = () => {
   return (
     <div className="relative h-screen w-full">
       {/* -------------------- TOP (60%) -------------------- */}
       <div className="h-[60%] grid grid-cols-3">
-        <div className="relative bg-cover bg-center" style={{ backgroundImage: "url('/src/img/4.jpg')" }}></div><div className="absolute inset-0 bg-black/50"></div>
-        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/5.jpg')" }}></div>
-        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/3.jpg')" }}></div>
+        <div className="relative bg-cover bg-center" style={{ backgroundImage: `url(${image4})` }}></div><div className="absolute inset-0 bg-black/50"></div>
+        <div className="bg-cover bg-center" style={{ backgroundImage: `url(${image5})` }}></div>
+        <div className="bg-cover bg-center" style={{ backgroundImage: `url(${image3})` }}></div>
       </div>
 
       {/* -------------------- BOTTOM (40%) -------------------- */}
       <div className="h-[40%] grid grid-cols-5">
-        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/10.jpg')" }}></div>
-        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/7.jpg')" }}></div>
-        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/6.jpg')" }}></div>
-        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/9.jpg')" }}></div>
-        <div className="bg-cover bg-center" style={{ backgroundImage: "url('/src/img/8.jpg')" }}></div>
+        <div className="bg-cover bg-center" style={{ backgroundImage: `url(${image10})`}}></div>
+        <div className="bg-cover bg-center" style={{ backgroundImage: `url(${image7})` }}></div>
+        <div className="bg-cover bg-center" style={{ backgroundImage: `url(${image6})` }}></div>
+        <div className="bg-cover bg-center" style={{ backgroundImage: `url(${image9})` }}></div>
+        <div className="bg-cover bg-center" style={{ backgroundImage: `url(${image8})` }}></div>
       </div>
 
       {/* -------------------- CENTERED FORM -------------------- */}
