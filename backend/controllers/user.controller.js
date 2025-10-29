@@ -246,26 +246,155 @@ export const recordSwipe = async (req, res) => {
     const swiperId = req.user.userId;
     const { swipedUserId, isLike } = req.body;
 
-    if (swiperId === undefined || swipedUserId === undefined || isLike === undefined) {
-      return res.status(400).json({ error: 'Missing swiperId, swipedUserId, or isLike' });
+    // Basic validation
+    if (swiperId === undefined || swipedUserId === undefined || typeof isLike !== 'boolean') {
+        return res.status(400).json({ error: 'Missing or invalid swiperId, swipedUserId, or isLike' });
     }
 
-    // Insert the swipe record
-    await pool.query(
-      `INSERT INTO swipes (swiper_id, swiped_id, is_like)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (swiper_id, swiped_id) DO UPDATE SET is_like = $3, created_at = NOW()`,
-      [swiperId, swipedUserId, isLike]
-    );
+    // Prevent swiping self
+    if (swiperId === parseInt(swipedUserId)) {
+        return res.status(400).json({ error: 'Cannot swipe on yourself' });
+    }
 
-    // --- TODO: Check for a match ---
-    // If isLike is true, check if the other user (swipedUserId) has also liked swiperId
-    // If yes, insert into the 'matches' table
+    let isMatch = false; // Initialize match status
 
-    res.status(201).json({ message: 'Swipe recorded' });
+    // Use a transaction to ensure atomicity
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Insert or update the swipe record
+        await client.query(
+          `INSERT INTO swipes (swiper_id, swiped_id, is_like)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (swiper_id, swiped_id) DO UPDATE SET is_like = $3, created_at = NOW()`, //
+          [swiperId, swipedUserId, isLike]
+        );
+
+        // --- Check for a match ONLY if the current swipe is a 'like' ---
+        if (isLike) {
+            // Check if the other user (swipedUserId) has also liked the current user (swiperId)
+            const reciprocalLikeResult = await client.query(
+                `SELECT 1 FROM swipes
+                 WHERE swiper_id = $1 AND swiped_id = $2 AND is_like = TRUE`, //
+                [swipedUserId, swiperId] // Note the reversed IDs
+            );
+
+            if (reciprocalLikeResult.rows.length > 0) {
+                // It's a match!
+                isMatch = true;
+                console.log(`[Swipe] Match found between User ${swiperId} and User ${swipedUserId}`);
+
+                // Insert into the 'matches' table, handling potential conflicts (e.g., if already matched)
+                // Ensure user1_id < user2_id to prevent duplicates like (1, 2) and (2, 1)
+                const user1 = Math.min(swiperId, swipedUserId);
+                const user2 = Math.max(swiperId, swipedUserId);
+
+                await client.query(
+                    `INSERT INTO matches (user1_id, user2_id)
+                     VALUES ($1, $2)
+                     ON CONFLICT (user1_id, user2_id) DO NOTHING`, //
+                    [user1, user2]
+                );
+            }
+        }
+        // --- End match check ---
+
+        await client.query('COMMIT'); // Commit the transaction
+
+        // Send response with match status
+        res.status(201).json({ message: 'Swipe recorded', isMatch: isMatch }); // <-- RETURN isMatch
+
+    } catch (transactionError) {
+        await client.query('ROLLBACK'); // Rollback on error
+        console.error('[Swipe] Transaction error:', transactionError);
+        res.status(500).json({ error: 'Server error recording swipe during transaction' });
+    } finally {
+        client.release(); // Release the client back to the pool
+    }
 
   } catch (error) {
-    console.error('Record swipe error:', error);
+    console.error('[Swipe] General record swipe error:', error);
     res.status(500).json({ error: 'Server error recording swipe' });
   }
+};
+
+export const getPendingMatch = async (req, res) => {
+    try {
+        const currentUserId = req.user.userId;
+
+        // Query for the oldest match involving the current user where their specific viewed_at is NULL
+        const result = await pool.query(
+            `SELECT
+                m.id as match_id,
+                CASE
+                    WHEN m.user1_id = $1 THEN m.user2_id
+                    ELSE m.user1_id
+                END as other_user_id,
+                u.name,
+                u.age,
+                u.bio,
+                u.profile_picture_url
+             FROM matches m
+             JOIN users u ON u.id = (CASE WHEN m.user1_id = $1 THEN m.user2_id ELSE m.user1_id END)
+             WHERE (m.user1_id = $1 AND m.user1_viewed_at IS NULL)
+                OR (m.user2_id = $1 AND m.user2_viewed_at IS NULL)
+             ORDER BY m.matched_at ASC -- Get the oldest first
+             LIMIT 1`,
+            [currentUserId]
+        );
+
+        if (result.rows.length > 0) {
+            const matchedUser = {
+                id: result.rows[0].other_user_id, // Return the other user's ID
+                name: result.rows[0].name,
+                age: result.rows[0].age,
+                bio: result.rows[0].bio,
+                profile_picture_url: result.rows[0].profile_picture_url,
+                matchId: result.rows[0].match_id // Include matchId to mark as seen later
+            };
+            res.json({ match: matchedUser });
+        } else {
+            res.json({ match: null }); // No pending matches
+        }
+    } catch (error) {
+        console.error('Get pending match error:', error);
+        res.status(500).json({ error: 'Server error fetching pending match' });
+    }
+};
+
+/**
+ * Marks a specific match notification as seen by the current user.
+ */
+export const markMatchAsSeen = async (req, res) => {
+    try {
+        const currentUserId = req.user.userId;
+        const { matchId } = req.body;
+
+        if (!matchId) {
+            return res.status(400).json({ error: 'Missing matchId' });
+        }
+
+        // Update the correct viewed_at column based on the user's ID in the match
+        const result = await pool.query(
+            `UPDATE matches
+             SET
+                user1_viewed_at = CASE WHEN user1_id = $1 THEN NOW() ELSE user1_viewed_at END,
+                user2_viewed_at = CASE WHEN user2_id = $1 THEN NOW() ELSE user2_viewed_at END
+             WHERE id = $2 AND (user1_id = $1 OR user2_id = $1) -- Ensure user is part of the match
+             RETURNING id`, // Return ID to confirm update occurred
+            [currentUserId, matchId]
+        );
+
+        if (result.rowCount === 0) {
+             console.warn(`[Match Seen] No match found or updated for matchId ${matchId} and userId ${currentUserId}`);
+             // You could return 404, but 200 is okay too if the goal is just idempotent marking
+        }
+
+        res.status(200).json({ message: 'Match marked as seen' });
+
+    } catch (error) {
+        console.error('Mark match as seen error:', error);
+        res.status(500).json({ error: 'Server error marking match as seen' });
+    }
 };

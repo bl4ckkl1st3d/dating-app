@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS matches (
     user1_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     user2_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     matched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    user1_viewed_at TIMESTAMP NULL, -- <-- ADDED: Timestamp when user1 saw the match notification
+    user2_viewed_at TIMESTAMP NULL, -- <-- ADDED: Timestamp when user2 saw the match notification
     UNIQUE(user1_id, user2_id)
 );
 
@@ -49,3 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
 CREATE INDEX IF NOT EXISTS idx_swipes_swiper ON swipes(swiper_id);
 CREATE INDEX IF NOT EXISTS idx_swipes_swiped ON swipes(swiped_id);
+
+-- ADDED: Index to quickly find unseen matches for a user
+CREATE INDEX IF NOT EXISTS idx_matches_unseen ON matches(user1_id, user1_viewed_at);
+CREATE INDEX IF NOT EXISTS idx_matches_unseen2 ON matches(user2_id, user2_viewed_at);
