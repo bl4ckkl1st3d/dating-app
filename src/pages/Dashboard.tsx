@@ -9,9 +9,10 @@ import {
 } from "framer-motion";
 import { X, Heart, Loader, MessageSquare } from "lucide-react";
 import SwipeCard from "../components/SwipeCard"; //
-import { userService, UserProfile } from "../services/user.service"; //
+import { userService, UserProfile,PotentialMatchesFilters } from "../services/user.service"; //
 import { useAuth } from "../context/AuthContext"; //
 import { SERVER_BASE_URL } from '../lib/api'; //
+import { useFilters } from '../context/FilterContext';
 
 // Helper function to construct full image URL (similar to EditProfile)
 const getFullImageUrl = (relativePath: string | null | undefined): string => {
@@ -212,6 +213,8 @@ const Dashboard: React.FC = () => {
   const [triggerSwipe, setTriggerSwipe] = useState<{ direction: "left" | "right"; execute: boolean; } | null>(null);
   const hasCheckedPendingMatchOnLoad = useRef(false); // Ref for initial load check
   const pollingIntervalRef = useRef<number | null>(null); // Ref to store interval ID
+  const { filters } = useFilters();
+  
 
   // --- Combined Effect for Initial Load and Polling ---
   useEffect(() => {
@@ -245,18 +248,27 @@ const Dashboard: React.FC = () => {
     };
 
     // --- Initial Load Logic ---
+// --- Initial Load Logic ---
     const initializeDashboard = async () => {
-      // Don't run if user isn't loaded yet or if we already checked this specific load cycle
+      // Include currentUserData?.age check
       if (!currentUserData || hasCheckedPendingMatchOnLoad.current) {
          // If currentUserData just loaded (was null before), ensure loading stops
          if(currentUserData && isLoading) setIsLoading(false);
          return;
       }
       console.log("[Init] Initializing dashboard...");
+
+      // --- Prepare filters using context state ---
+      const filtersToApply: PotentialMatchesFilters = {
+          minAge: filters.minAge, // Get minAge from FilterContext
+          maxAge: filters.maxAge, // Get maxAge from FilterContext
+          currentUserAge: currentUserData?.age // Pass user's age for default calculation
+      };
+      // --- End prepare filters ---
+
       setIsLoading(true);
       setError(null);
-      // Reset matchedUser ONLY on initial load, not during polling updates triggered by currentUserData change
-      // This allows the initial pending check to potentially set it.
+      // Reset matchedUser ONLY on initial load
       if (!hasCheckedPendingMatchOnLoad.current) {
           setMatchedUser(null);
       }
@@ -265,15 +277,15 @@ const Dashboard: React.FC = () => {
       try {
         await checkPendingMatch(); // Perform the check once immediately on load
 
-        // If a match wasn't found immediately by checkPendingMatch, load potential swipe users
-        // Use a local variable 'isMatchInitiallyFound' based on the result of checkPendingMatch if needed,
-        // but checking matchedUser state *after* await should be sufficient here.
+        // If a match wasn't found immediately, load potential swipe users
         if (!matchedUser) { // Check the state *after* the await
             console.log('[Init] No initial pending match, fetching potential matches...');
-            const fetchedUsers = await userService.getPotentialMatches(); //
+            // --- Pass filters to the service function ---
+            const fetchedUsers = await userService.getPotentialMatches(filtersToApply); // Pass filters
+            // --- End pass filters ---
             setUsers(fetchedUsers);
 
-            // --- Start polling only if no match was found initially ---
+            // Start polling only if no match was found initially
             if (!pollingIntervalRef.current && currentUserData) {
                 console.log("[Polling] Starting interval after initial load...");
                 pollingIntervalRef.current = setInterval(checkPendingMatch, 15000); // Check every 15 seconds
@@ -303,7 +315,7 @@ const Dashboard: React.FC = () => {
 
   // Depend on currentUserData to trigger initialization/re-initialization on login/logout.
   // DO NOT depend on matchedUser here, otherwise starting polling becomes tricky.
-  }, [currentUserData]);
+  }, [currentUserData, filters]);
 
 
   // handleSwipe receives match status and potentially matchId
@@ -332,35 +344,47 @@ const Dashboard: React.FC = () => {
   };
 
   // closeMatchScreen needs to potentially restart polling and fetch users
+// --- closeMatchScreen function needs to fetch with filters too ---
   const closeMatchScreen = (matchIdToMark?: number) => {
-
     if (matchIdToMark) {
         userService.markMatchAsSeen(matchIdToMark).catch(err => { //
-            console.error("[Match Screen] Failed to mark match as seen:", err); // Log error but continue
+            console.error("[Match Screen] Failed to mark match as seen:", err);
         });
     }
 
-    // Hide the screen *after* marking (or attempting to mark)
     setMatchedUser(null);
     hasCheckedPendingMatchOnLoad.current = false; // Allow check on next full load if needed
 
      // --- Fetch swipe users AND Restart Polling after closing match screen ---
      const fetchAndRestartPolling = async () => {
          console.log("[Match Screen Close] Fetching swipe users and restarting polling...");
+
+         // --- Prepare filters using context state ---
+         const filtersToApply: PotentialMatchesFilters = {
+             minAge: filters.minAge, // Get minAge from FilterContext
+             maxAge: filters.maxAge, // Get maxAge from FilterContext
+             currentUserAge: currentUserData?.age // Pass user's age for default calculation
+         };
+         // --- End prepare filters ---
+
          setIsLoading(true);
          setError(null);
          try {
-             const fetchedUsers = await userService.getPotentialMatches(); //
+             // --- Pass filters to the service function ---
+             const fetchedUsers = await userService.getPotentialMatches(filtersToApply); // Pass filters
+             // --- End pass filters ---
              setUsers(fetchedUsers);
 
              // --- Restart polling ---
              if (!pollingIntervalRef.current && currentUserData) {
                  // Define the check function again locally or ensure it's accessible
-                 const checkPendingMatch = async () => { /* ... same implementation as above ... */
+                 // Note: Moved checkPendingMatch definition outside for reusability if needed,
+                 // or keep it scoped here if preferred.
+                 const checkPendingMatch = async () => {
                      if (!currentUserData || matchedUser) return; // Add matchedUser check again just in case
                      console.log("[Polling] Checking for pending match (restarted)...");
                      try {
-                         const pendingMatch = await userService.getPendingMatch();
+                         const pendingMatch = await userService.getPendingMatch(); //
                          if (pendingMatch && !matchedUser) { // Check matchedUser state again
                              console.log("[Polling] Pending match found (restarted):", pendingMatch.name);
                              setMatchedUser(pendingMatch);

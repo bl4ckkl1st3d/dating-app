@@ -7,6 +7,7 @@ import Signup from "./pages/Signup";
 import SignupProfile from "./pages/SignupProfile";
 import Dashboard from "./pages/Dashboard";
 import Dashboard2 from "./pages/Dashboard2";
+import { FilterProvider } from "./context/FilterContext";
 import Messages from "./pages/Messages";
 import EditProfile from "./pages/EditProfile";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -46,7 +47,11 @@ const App: React.FC = () => {
   return (
     <Router>
       <AuthProvider>
-        <AppRoutes />
+        <FilterProvider>
+<AppRoutes />
+
+        </FilterProvider>
+        
       </AuthProvider>
     </Router>
   );

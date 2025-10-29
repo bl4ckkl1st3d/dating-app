@@ -217,23 +217,56 @@ export const uploadProfilePicture = async (req, res) => {
 };
 export const getPotentialMatches = async (req, res) => {
   try {
-    const currentUserId = req.user.userId; // Get user ID from authenticated token
+    const currentUserId = req.user.userId;
 
-    // Query to find users that the current user hasn't swiped on yet,
-    // excluding the current user themselves.
-    // Adjust profile_picture_url based on your actual column name
-    const result = await pool.query(
-      `SELECT id, name, age, bio, profile_picture_url
+    // --- Read age filters from query parameters ---
+    const minAgeParam = req.query.minAge;
+    const maxAgeParam = req.query.maxAge;
+
+    // Convert to integers, provide defaults if needed or handle parsing errors
+    // Setting very broad defaults if parameters are missing/invalid
+    const minAge = parseInt(minAgeParam, 10) || 18; // Default min 18 if not provided/invalid
+    const maxAge = parseInt(maxAgeParam, 10) || 100; // Default max 100 if not provided/invalid
+
+    console.log(`[Controller] Fetching potential matches for user ${currentUserId} with age range: ${minAge}-${maxAge}`);
+    // --- End reading filters ---
+
+    // --- Build the SQL query dynamically (better approach for optional filters) ---
+    let queryText = `
+       SELECT id, name, age, bio, profile_picture_url
        FROM users
-       WHERE id != $1
+       WHERE id != $1                                   -- Exclude self
        AND id NOT IN (
            SELECT swiped_id FROM swipes WHERE swiper_id = $1
-       )
+       )                                               -- Exclude swiped
+    `;
+    const queryParams = [currentUserId];
+    let paramIndex = 2; // Start index for additional parameters
+
+    // Add age filter clauses if valid ages were determined
+    if (minAge >= 18) {
+        queryText += ` AND age >= $${paramIndex}`;
+        queryParams.push(minAge);
+        paramIndex++;
+    }
+    if (maxAge >= 18) { // Assuming maxAge could be less than minAge initially if default logic changes
+        queryText += ` AND age <= $${paramIndex}`;
+        queryParams.push(maxAge);
+        paramIndex++;
+    }
+
+    queryText += `
        ORDER BY random() -- Or any other logic for ordering
        LIMIT 10 -- Limit the number of profiles sent at once
-      `,
-      [currentUserId]
-    );
+    `;
+    // --- End building query ---
+
+    console.log('[Controller] Executing SQL:', queryText);
+    console.log('[Controller] With Params:', queryParams);
+
+    // --- Execute the query ---
+    const result = await pool.query(queryText, queryParams);
+    // --- End executing query ---
 
     res.json({ users: result.rows });
   } catch (error) {

@@ -1,16 +1,36 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+// Import necessary icons
+import { X, SlidersHorizontal, User, LogOut } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext'; //
 
 interface MobileSettingsSidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  onFilterClick?: () => void; // Prop for filter click
 }
 
 const MobileSettingsSidebar: React.FC<MobileSettingsSidebarProps> = ({
   isOpen,
   onClose,
+  onFilterClick,
 }) => {
+  const { logout } = useAuth(); //
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    onClose();
+    await logout(); //
+    navigate('/login'); // Redirects to login page
+  };
+
+  const handleFilter = () => {
+    if (onFilterClick) {
+      onFilterClick(); // Calls the function passed from AppNavbar to open filter modal
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -41,11 +61,34 @@ const MobileSettingsSidebar: React.FC<MobileSettingsSidebarProps> = ({
             </div>
 
             {/* Menu */}
-            <div className="flex flex-col p-4 space-y-4">
-              <button className="text-gray-700 font-medium text-left hover:text-pink-500">
-                Account Settings
-              </button>
-              <button className="text-gray-700 font-medium text-left hover:text-pink-500">
+            <div className="flex flex-col p-4 space-y-1">
+              {/* Edit Profile Link */}
+              <Link
+                to="/edit-profile" // Navigates to EditProfile page
+                className="text-gray-700 font-medium text-left hover:text-pink-500 py-2 flex items-center" // Use flex
+                onClick={onClose} // Close sidebar when navigating
+              >
+                <User size={18} className="mr-2" /> {/* <-- Added User Icon */}
+                Edit Profile
+              </Link>
+
+              {/* Filter Button */}
+              {onFilterClick && (
+                <button
+                  onClick={handleFilter} // Opens the filter modal
+                  className="text-gray-700 font-medium text-left hover:text-pink-500 py-2 flex items-center" // Use flex
+                >
+                  <SlidersHorizontal size={18} className="mr-2" /> {/* <-- Added Filter Icon */}
+                  Filter
+                </button>
+              )}
+
+              {/* Logout Button */}
+              <button
+                onClick={handleLogout} // Logs the user out
+                className="text-gray-700 font-medium text-left hover:text-pink-500 py-2 flex items-center" // Use flex
+              >
+                 <LogOut size={18} className="mr-2" /> {/* <-- Added Logout Icon */}
                 Logout
               </button>
             </div>
