@@ -4,15 +4,14 @@ import dotenv from 'dotenv';
 import pool from './config/database.js';
 import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
+import messageRoutes from './routes/message.routes.js';
 import path from 'path'; // <-- Import the 'path' module
 import { fileURLToPath } from 'url'; // <-- Needed for __dirname
 
 // Load environment variables
 dotenv.config(); //
-
 const app = express();
 const PORT = process.env.PORT || 5000; //
-
 // Helper for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,6 +45,7 @@ app.get('/health', (req, res) => { //
 
 app.use('/api/auth', authRoutes); //
 app.use('/api/users', userRoutes); //
+app.use('/api', messageRoutes);
 
 
 // Error handling middleware
