@@ -1,6 +1,6 @@
 // src/context/AuthContext.tsx
-import React, { createContext, useState, useEffect, useContext, ReactNode, useCallback } from 'react'; // Added useCallback
-import { authService } from '../services/auth.service';
+import React, { createContext, useState, useEffect, useContext, ReactNode, useCallback } from 'react';
+import { authService } from '../services/auth.service'; //
 
 // Interface for User data remains the same
 interface User {
@@ -12,74 +12,100 @@ interface User {
   profile_picture_url?: string;
 }
 
-// *** Add fetchCurrentUser to the context type definition ***
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string, age?: number, bio?: string) => Promise<void>;
   logout: () => Promise<void>;
   loading: boolean;
-  fetchCurrentUser: () => Promise<void>; // <-- Added function type
+  fetchCurrentUser: () => Promise<void>;
+  isNewSignup: boolean; // Represents if profile setup is likely needed
+  resetNewSignupFlag: () => void;
+  matchIdToOpen: number | null;
+  setMatchIdToOpen: (id: number | null) => void;
 }
 
-// AuthContext creation remains the same
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isNewSignup, setIsNewSignup] = useState(false);
+  const [matchIdToOpen, setMatchIdToOpenState] = useState<number | null>(null);
 
-  // *** Define the fetchCurrentUser function ***
-  // Use useCallback to memoize the function
+  const setMatchIdToOpen = (id: number | null) => {
+    console.log(`[AuthContext] Setting matchIdToOpen to: ${id}`);
+    setMatchIdToOpenState(id);
+  }
+
+  const resetNewSignupFlag = () => {
+    console.log('🔄 [AuthContext] Manually resetting isNewSignup flag.');
+    setIsNewSignup(false);
+  };
+
   const fetchCurrentUser = useCallback(async () => {
-    console.log('🔄 [AuthContext] Fetching current user...');
-    // No need to set loading to true here unless it's a forced refresh
-    // setLoading(true);
+    console.log('🔄 [AuthContext] fetchCurrentUser starting...');
+
     if (authService.isAuthenticated()) { //
       try {
         const userData = await authService.getCurrentUser(); //
         console.log('✅ [AuthContext] Current user fetched:', userData);
         setUser(userData);
+
+        // *** Determine isNewSignup based on profile_picture_url ***
+        if (!userData.profile_picture_url) {
+          console.log('🚩 [AuthContext] User profile picture is missing, setting isNewSignup = true.');
+          setIsNewSignup(true);
+        } else {
+          console.log('✅ [AuthContext] User has profile picture, setting isNewSignup = false.');
+          setIsNewSignup(false);
+        }
+        // **********************************************************
+
       } catch (error) {
         console.error('❌ [AuthContext] Failed to fetch user, logging out:', error);
-        // If fetching fails (e.g., invalid token), log out
         await authService.logout(); //
         setUser(null);
-      } finally {
-         // Only set loading false if it was set true initially or on error maybe
-         // setLoading(false);
+        setIsNewSignup(false); // Reset on error too
       }
     } else {
         console.log('ℹ️ [AuthContext] No token found, user is not authenticated.');
-        setUser(null); // Ensure user is null if not authenticated
-        // setLoading(false); // Make sure loading stops if check is done
+        setUser(null);
+        setIsNewSignup(false); // Reset if not authenticated
     }
-  }, []); // useCallback dependency array is empty as it doesn't depend on props/state outside its scope
+    console.log('🔄 [AuthContext] fetchCurrentUser finished.');
+  }, []);
 
-  // Initial authentication check on component mount
   useEffect(() => {
     const checkAuth = async () => {
-      setLoading(true); // Start loading on initial check
-      await fetchCurrentUser(); // Use the new function for the initial check
-      setLoading(false); // Stop loading after the check is complete
+      console.log('⏳ [AuthContext] Initial auth check starting...');
+      setLoading(true);
+      await fetchCurrentUser();
+      setLoading(false);
+      console.log('✅ [AuthContext] Initial auth check finished.');
     };
     checkAuth();
-  }, [fetchCurrentUser]); // Add fetchCurrentUser as a dependency
+  }, [fetchCurrentUser]);
 
-  // Login, Register, Logout functions remain largely the same
+  // --- MODIFIED LOGIN ---
   const login = async (email: string, password: string) => {
+    console.log('🔄 [AuthContext] Login initiated...');
+    // REMOVED: setIsNewSignup(false); // Don't reset here anymore
+
     try {
-      // authService.login saves the token to localStorage
       await authService.login({ email, password }); //
-      // Now that the token is set, fetch the most up-to-date user data
-      await fetchCurrentUser(); // <--- ADD THIS CALL
+      console.log('🔐 [AuthContext] Login API call successful. Fetching user data...');
+      await fetchCurrentUser(); // Fetch user data; this will now set isNewSignup based on the profile pic
+      console.log(`✅ [AuthContext] Login process finished. isNewSignup is now: ${isNewSignup}`); // Log the state *after* fetch
     } catch (error) {
        console.error('❌ [AuthContext] Login failed:', error);
-       setUser(null); // Ensure user is null on login failure
-       localStorage.removeItem('token'); // Clear token on login failure
-       throw error; // Re-throw so Login page can display the error
+       setUser(null);
+       setIsNewSignup(false); // Ensure flag is false on login error
+       localStorage.removeItem('token');
+       throw error; // Re-throw for the component
     }
   };
+  // --- END MODIFIED LOGIN ---
 
   const register = async (
     email: string,
@@ -90,32 +116,39 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   ) => {
     console.log('🔐 [AuthContext] Register called with:', { email, name, age });
     try {
-      // authService.register saves the token to localStorage
+      console.log('🔐 [AuthContext] Calling authService.register...');
       await authService.register({ email, password, name, age, bio }); //
-      // Now that the token is set, fetch the user data
-      await fetchCurrentUser(); // <--- ADD THIS CALL
+      console.log('✅ [AuthContext] authService.register successful.');
+      console.log('🔐 [AuthContext] Calling fetchCurrentUser after register...');
+      await fetchCurrentUser(); // Let fetchCurrentUser determine the flag
+      console.log(`✅ [AuthContext] Register function finished. isNewSignup is now: ${isNewSignup}`);
     } catch (error) {
       console.error('❌ [AuthContext] Register failed:', error);
-      setUser(null); // Ensure user is null on register failure
-      localStorage.removeItem('token'); // Clear token on register failure
-      throw error; // Re-throw so Signup page can display the error
+      setUser(null);
+      setIsNewSignup(false); // Reset flag on failure
+      localStorage.removeItem('token');
+      throw error;
     }
   };
 
   const logout = async () => {
+    console.log('🔄 [AuthContext] Logout initiated, resetting isNewSignup.');
     await authService.logout(); //
     setUser(null);
+    setIsNewSignup(false);
   };
 
   return (
-    // *** Add fetchCurrentUser to the provided context value ***
-    <AuthContext.Provider value={{ user, login, register, logout, loading, fetchCurrentUser }}>
+    // *** ADDED: Provide the new state and setter ***
+    <AuthContext.Provider value={{
+      user, login, register, logout, loading, fetchCurrentUser, isNewSignup, resetNewSignupFlag,
+      matchIdToOpen, setMatchIdToOpen // <-- Add here
+      }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-// useAuth hook remains the same
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {

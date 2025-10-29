@@ -5,6 +5,8 @@ import { messageService, MatchData, MessageData } from '../services/message.serv
 import { useAuth } from '../context/AuthContext'; //
 import { formatDistanceToNowStrict } from 'date-fns';
 import ConfirmationModal from '../components/ConfirmationModal'; //
+import { useNavigate, useLocation } from 'react-router-dom';
+import { userService} from "../services/user.service";
 
 // --- Helper Function for Timestamps ---
 const formatTimestamp = (isoString: string): string => {
@@ -276,7 +278,9 @@ const ChatView: React.FC<ChatViewProps> = ({
 
 // --- Messages Component (Main Page) ---
 const Messages: React.FC = () => {
-    const { user: currentUser } = useAuth();
+    const { user: currentUser, matchIdToOpen, setMatchIdToOpen } = useAuth();
+    const location = useLocation(); // <-- Get location object
+    const navigate = useNavigate(); // <-- Get navigate function
     const [matches, setMatches] = useState<MatchData[]>([]);
     const [selectedChatMatch, setSelectedChatMatch] = useState<MatchData | null>(null);
     const [initialChatData, setInitialChatData] = useState<{ messages: MessageData[]; lastReadByOtherId: number | null } | null>(null);
@@ -287,25 +291,49 @@ const Messages: React.FC = () => {
     const [matchToUnmatch, setMatchToUnmatch] = useState<MatchData | null>(null);
     // *** Add Ref for list polling interval ***
     const listPollingIntervalRef = useRef<number | null>(null);
+    const processedContextMatchId = useRef(false);
 
-    const loadMatches = useCallback(async (showLoading = true) => {
-        if (!currentUser) return;
-        if (showLoading) setIsLoadingMatches(true);
-        // setError(null); // Keep previous errors unless it's a full reload?
-        try {
-            // console.log("🔄 [Messages] Fetching matches list..."); // Keep logs minimal
-            const fetchedMatches = await messageService.getMatches();
-            // console.log("✅ [Messages] Fetched matches data:", fetchedMatches);
-            setMatches(fetchedMatches); // Update state
-             if (error) setError(null); // Clear error on successful fetch
-        } catch (err) {
-            console.error("Failed to load matches", err);
-            // Set error only if it's not already set to avoid flickering
-            setError(prev => prev || "Could not load your matches. Please try again later.");
-        } finally {
-            if (showLoading) setIsLoadingMatches(false);
+const loadMatches = useCallback(async (showLoading = true) => { //
+        if (!currentUser) return; //
+        if (showLoading) setIsLoadingMatches(true); //
+        let fetchedMatches: MatchData[] = []; //
+        try { //
+            fetchedMatches = await messageService.getMatches(); //
+            setMatches(fetchedMatches); //
+             // setError(null); // Better to clear error only on success
+             if (!error) setError(null); // Clear error if previous state wasn't error
+        } catch (err) { //
+            console.error("Failed to load matches", err); //
+            setError(prev => prev || "Could not load your matches. Please try again later."); //
+        } finally { //
+            if (showLoading) setIsLoadingMatches(false); //
+
+            // *** Check context AFTER matches are loaded ***
+            // Use the locally scoped fetchedMatches here
+            if (!processedContextMatchId.current && matchIdToOpen && fetchedMatches.length > 0) { //
+                 console.log(`[Messages] Matches loaded. Checking context for matchIdToOpen: ${matchIdToOpen}`); //
+                 const matchToSelect = fetchedMatches.find(m => m.matchId === matchIdToOpen); //
+                 if (matchToSelect) { //
+                     console.log(`[Messages] Found match from context. Selecting chat and clearing context ID.`); //
+                     handleSelectChat(matchToSelect); // Call stable handleSelectChat
+                     setMatchIdToOpen(null); // Clear the context ID
+                     processedContextMatchId.current = true; // Mark as processed
+                 } else { //
+                     console.warn(`[Messages] matchIdToOpen (${matchIdToOpen}) found in context, but not in fetched matches list. Clearing context ID.`); //
+                     setMatchIdToOpen(null); // Clear if match not found
+                     processedContextMatchId.current = true; // Mark as processed anyway
+                 }
+            } else if (!processedContextMatchId.current && matchIdToOpen) { //
+                 // Context ID exists, but no matches fetched (maybe empty list)
+                 console.warn(`[Messages] matchIdToOpen (${matchIdToOpen}) found in context, but no matches were fetched. Clearing context ID.`); //
+                 setMatchIdToOpen(null); //
+                 processedContextMatchId.current = true; //
+            }
+            // *** End Check ***
         }
-    }, [currentUser, error]);
+    // *** REMOVED dependencies: error, matchIdToOpen, setMatchIdToOpen, handleSelectChat ***
+    // Only currentUser should be here if loadMatches uses it directly (which it does)
+    }, [currentUser]);
 
     useEffect(() => {
         loadMatches();
@@ -352,30 +380,71 @@ const Messages: React.FC = () => {
         return () => { document.body.style.overflow = ''; };
     }, [selectedChatMatch]);
 
-    const handleSelectChat = async (match: MatchData) => {
-        setIsLoadingMessages(true);
-        setError(null);
-        setSelectedChatMatch(match);
-        setInitialChatData(null); // Clear previous data
+    const handleSelectChat = useCallback(async (match: MatchData) => { //
+            console.log(`[Messages] Selecting chat for matchId: ${match.matchId}, name: ${match.name}`); //
+            setIsLoadingMessages(true); //
+            setError(null); //
+            setSelectedChatMatch(match); //
+            setInitialChatData(null); // Clear previous data
 
-        try {
-            // Fetch initial messages and read status
-            const data = await messageService.getMessages(match.matchId); //
-            setInitialChatData(data); // Set the combined data object
+            try { //
+                const data = await messageService.getMessages(match.matchId); // Fetch initial messages and read status
+                setInitialChatData(data); // Set the combined data object
 
-             // Mark messages as read (fire and forget)
-             messageService.markMessagesRead(match.matchId).catch(err => { //
-                console.warn(`[Messages] Failed background task: markMessagesRead for ${match.matchId}`, err);
-             });
+                messageService.markMessagesRead(match.matchId).catch(err => { // Mark messages as read (fire and forget)
+                    console.warn(`[Messages] Failed background task: markMessagesRead for ${match.matchId}`, err); //
+                });
 
-        } catch (err) {
-            console.error(`Failed to load messages for match ${match.matchId}`, err);
-            setError(`Could not load messages for ${match.name}.`);
-            setSelectedChatMatch(null); // Go back on error
-        } finally {
-            setIsLoadingMessages(false);
+            } catch (err) { //
+                console.error(`Failed to load messages for match ${match.matchId}`, err); //
+                setError(`Could not load messages for ${match.name}.`); //
+                setSelectedChatMatch(null); // Go back on error
+            } finally { //
+                setIsLoadingMessages(false); //
+            }
+        }, []);
+
+    useEffect(() => { //
+        // Reset processed flag on mount
+        processedContextMatchId.current = false; //
+        loadMatches(); // Initial load, which will include the context check
+    }, [loadMatches]);
+
+    useEffect(() => {
+        // Log the state *every time* the effect runs
+        console.log("[Messages] Location State Effect triggered. State:", location.state);
+
+        const state = location.state as { openMatch?: MatchData } | null;
+        const matchToOpen = state?.openMatch;
+
+        if (matchToOpen && matchToOpen.matchId && !selectedChatMatch) {
+            console.log(`[Messages] Found openMatch state for matchId: ${matchToOpen.matchId}. Calling handleSelectChat.`);
+            handleSelectChat(matchToOpen);
+
+            console.log(`[Messages] Marking match ${matchToOpen.matchId} as seen.`);
+            userService.markMatchAsSeen(matchToOpen.matchId).catch(err => { //
+                console.error(`[Messages] Failed background task: markMatchAsSeen for ${matchToOpen.matchId}`, err);
+            });
+
+            // *** Delay state clearing ***
+            console.log("[Messages] Scheduling state clear.");
+            const timerId = setTimeout(() => {
+                console.log("[Messages] Executing delayed state clear.");
+                navigate(location.pathname, { replace: true, state: {} });
+            }, 0); // 0ms delay pushes it to the end of the event loop
+
+            // Cleanup function for the timeout if component unmounts quickly
+            return () => clearTimeout(timerId);
+
+        } else if (matchToOpen) {
+            // State exists but we are not acting on it (e.g., chat already open)
+            console.log("[Messages] openMatch state found, but conditions not met (selectedChatMatch might exist). Clearing state immediately.");
+             navigate(location.pathname, { replace: true, state: {} });
+        } else {
+            console.log("[Messages] No openMatch state found.");
         }
-    };
+    // Added console logs don't require changing dependencies
+    }, [location.state, navigate, handleSelectChat, selectedChatMatch]);
 
     const handleBackToList = () => {
         setSelectedChatMatch(null);

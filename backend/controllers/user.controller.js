@@ -287,19 +287,16 @@ export const recordSwipe = async (req, res) => {
     const swiperId = req.user.userId;
     const { swipedUserId, isLike } = req.body;
 
-    // Basic validation
     if (swiperId === undefined || swipedUserId === undefined || typeof isLike !== 'boolean') {
         return res.status(400).json({ error: 'Missing or invalid swiperId, swipedUserId, or isLike' });
     }
-
-    // Prevent swiping self
     if (swiperId === parseInt(swipedUserId)) {
         return res.status(400).json({ error: 'Cannot swipe on yourself' });
     }
 
-    let isMatch = false; // Initialize match status
+    let isMatch = false;
+    let matchId = null; // <-- Initialize matchId variable
 
-    // Use a transaction to ensure atomicity
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -308,50 +305,65 @@ export const recordSwipe = async (req, res) => {
         await client.query(
           `INSERT INTO swipes (swiper_id, swiped_id, is_like)
            VALUES ($1, $2, $3)
-           ON CONFLICT (swiper_id, swiped_id) DO UPDATE SET is_like = $3, created_at = NOW()`, //
+           ON CONFLICT (swiper_id, swiped_id) DO UPDATE SET is_like = $3, created_at = NOW()`,
           [swiperId, swipedUserId, isLike]
         );
 
-        // --- Check for a match ONLY if the current swipe is a 'like' ---
         if (isLike) {
-            // Check if the other user (swipedUserId) has also liked the current user (swiperId)
             const reciprocalLikeResult = await client.query(
                 `SELECT 1 FROM swipes
-                 WHERE swiper_id = $1 AND swiped_id = $2 AND is_like = TRUE`, //
+                 WHERE swiper_id = $1 AND swiped_id = $2 AND is_like = TRUE`,
                 [swipedUserId, swiperId] // Note the reversed IDs
             );
 
             if (reciprocalLikeResult.rows.length > 0) {
-                // It's a match!
                 isMatch = true;
                 console.log(`[Swipe] Match found between User ${swiperId} and User ${swipedUserId}`);
 
-                // Insert into the 'matches' table, handling potential conflicts (e.g., if already matched)
-                // Ensure user1_id < user2_id to prevent duplicates like (1, 2) and (2, 1)
                 const user1 = Math.min(swiperId, swipedUserId);
                 const user2 = Math.max(swiperId, swipedUserId);
 
-                await client.query(
+                // *** MODIFIED: Insert and RETURNING id ***
+                const matchInsertResult = await client.query(
                     `INSERT INTO matches (user1_id, user2_id)
                      VALUES ($1, $2)
-                     ON CONFLICT (user1_id, user2_id) DO NOTHING`, //
+                     ON CONFLICT (user1_id, user2_id) DO UPDATE
+                     SET matched_at = NOW() -- Optional: update timestamp if conflict occurs
+                     RETURNING id`, // <-- Return the id of the inserted/updated row
                     [user1, user2]
                 );
+                // *** END MODIFIED ***
+
+                // *** Store the returned matchId ***
+                if (matchInsertResult.rows.length > 0) {
+                    matchId = matchInsertResult.rows[0].id; // <-- Assign the returned id
+                     console.log(`[Swipe] Match record created/updated with ID: ${matchId}`);
+                } else {
+                     // This case might happen if ON CONFLICT DO NOTHING was used and the row already existed.
+                     // We might need to select the existing ID if that's the desired behavior.
+                     // For now, assume RETURNING id works for INSERT or UPDATE.
+                     console.warn(`[Swipe] Match insert/update did not return an ID.`);
+                }
+                 // *** End Store ***
             }
         }
-        // --- End match check ---
 
-        await client.query('COMMIT'); // Commit the transaction
+        await client.query('COMMIT');
 
-        // Send response with match status
-        res.status(201).json({ message: 'Swipe recorded', isMatch: isMatch }); // <-- RETURN isMatch
+        // *** MODIFIED: Send response including matchId if it's a match ***
+        res.status(201).json({
+            message: 'Swipe recorded',
+            isMatch: isMatch,
+            matchId: isMatch ? matchId : null // <-- Return matchId only if isMatch is true
+        });
+        // *** END MODIFIED ***
 
     } catch (transactionError) {
-        await client.query('ROLLBACK'); // Rollback on error
+        await client.query('ROLLBACK');
         console.error('[Swipe] Transaction error:', transactionError);
         res.status(500).json({ error: 'Server error recording swipe during transaction' });
     } finally {
-        client.release(); // Release the client back to the pool
+        client.release();
     }
 
   } catch (error) {

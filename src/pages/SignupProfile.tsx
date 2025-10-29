@@ -1,9 +1,10 @@
+// src/pages/SignupProfile.tsx
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import AuthForm from '../components/AuthForm';
-import { UploadCloud, User as UserIcon } from 'lucide-react'; // Assuming lucide-react is installed
-import { useAuth } from '../context/AuthContext';
-// import api from '../lib/api'; // You would use this for the actual upload
+import AuthForm from '../components/AuthForm'; //
+import { UploadCloud, User as UserIcon } from 'lucide-react';
+import { useAuth } from '../context/AuthContext'; //
+import api from '../lib/api'; // <-- Import api instance
 
 const SignupProfile: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -11,12 +12,14 @@ const SignupProfile: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  // const { user } = useAuth(); // Get user context if needed for the API call
+  // <-- Get user, resetNewSignupFlag, and fetchCurrentUser from AuthContext
+  const { user, resetNewSignupFlag, fetchCurrentUser } = useAuth(); //
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      if (selectedFile.size > 5 * 1024 * 1024) { // 5MB limit
+      // 5MB limit check from upload middleware
+      if (selectedFile.size > 5 * 1024 * 1024) {
         setError('File is too large. Please select a file under 5MB.');
         return;
       }
@@ -29,46 +32,52 @@ const SignupProfile: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file) {
-      setError('Please select a picture to upload.');
-      return;
+    if (!user) { // Check if user data is available
+        setError('User not loaded. Cannot upload profile picture.');
+        return;
     }
     setError('');
     setLoading(true);
 
-    // -----------------------------------------------------------------
-    // TODO: Implement actual API upload logic
-    // -----------------------------------------------------------------
-    // The backend currently doesn't have an endpoint for file uploads.
-    // When it does, the logic would look something like this:
-    //
-    // const formData = new FormData();
-    // formData.append('profilePicture', file);
-    //
-    // try {
-    //   // You would need to create this endpoint
-    //   // The 'user.controller.js' only handles text fields for updates.
-    //   // You'd also need to update 'user.routes.js'
-    //   const response = await api.post(`/users/profile/${user.id}/upload`, formData, {
-    //     headers: { 'Content-Type': 'multipart/form-data' },
-    //   });
-    //   console.log('Upload successful:', response.data);
-    //   navigate('/dashboard'); // Navigate to the main app
-    // } catch (err: any) {
-    //   console.error('Upload failed:', err);
-    //   setError(err.response?.data?.error || 'Upload failed. Please try again.');
-    // } finally {
-    //   setLoading(false);
-    // }
-    // -----------------------------------------------------------------
+    try {
+        // --- Actual Upload Logic ---
+        if (file) {
+            console.log('Attempting to upload picture:', file.name);
+            const formData = new FormData();
+            // Field name must match upload middleware
+            formData.append('profilePicture', file);
 
-    // Simulating upload for now
-    console.log('Simulating upload of:', file.name);
-    setTimeout(() => {
+            // API call to the backend endpoint
+            const response = await api.post(`/users/profile/${user.id}/upload`, formData, {
+               headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            console.log('Upload successful:', response.data);
+
+            // <-- Refresh user data in context after successful upload
+            await fetchCurrentUser(); //
+
+        } else {
+            console.log('No picture selected, skipping upload.');
+            // Proceed without uploading if no file is chosen
+        }
+        // --- End Upload Logic ---
+
+        resetNewSignupFlag(); // <-- Reset the new signup flag
+        navigate('/dashboard'); // Navigate to the main app dashboard
+
+    } catch (err: any) {
+      console.error('Upload failed:', err);
+      // Display error from backend if available, otherwise generic message
+      setError(err.response?.data?.error || 'Upload failed. Please try again.');
+    } finally {
       setLoading(false);
-      console.log('Upload complete, navigating to home.');
-      navigate('/'); // Navigate to home/dashboard
-    }, 1500);
+    }
+  };
+
+  // Skip function remains the same
+  const handleSkip = () => {
+    resetNewSignupFlag(); // <-- Reset the flag when skipping
+    navigate('/dashboard');
   };
 
   return (
@@ -76,24 +85,28 @@ const SignupProfile: React.FC = () => {
       title="Set Up Your Profile"
       subtitle="Add a profile picture so others can see you"
       onSubmit={handleSubmit}
-      submitText="Save & Continue"
+      submitText={loading ? "Saving..." : "Save & Continue"}
       loading={loading}
       error={error}
       footer={
-        <p>
-          <Link to="/" className="text-gray-600 hover:text-pink-500 font-semibold">
-          </Link>
-        </p>
+         <button
+            type="button"
+            onClick={handleSkip}
+            className="text-gray-600 hover:text-pink-500 font-semibold text-sm"
+            disabled={loading} // Disable skip button while loading
+          >
+            Skip for now
+          </button>
       }
     >
       <div className="flex flex-col items-center space-y-4">
         {/* File Preview */}
         <div className="w-40 h-40 rounded-full border-4 border-pink-100 flex items-center justify-center bg-gray-100 overflow-hidden">
           {preview ? (
-            <img 
-              src={preview} 
-              alt="Profile Preview" 
-              className="w-full h-full object-cover" 
+            <img
+              src={preview}
+              alt="Profile Preview"
+              className="w-full h-full object-cover"
             />
           ) : (
             <UserIcon className="text-gray-400" size={64} />
@@ -103,7 +116,7 @@ const SignupProfile: React.FC = () => {
         {/* File Upload Button */}
         <label
           htmlFor="profilePicture"
-          className="cursor-pointer bg-white border border-gray-300 text-gray-700 px-6 py-2 rounded-xl font-semibold hover:bg-gray-50 transition-colors flex items-center space-x-2"
+          className={`cursor-pointer bg-white border border-gray-300 text-gray-700 px-6 py-2 rounded-xl font-semibold hover:bg-gray-50 transition-colors flex items-center space-x-2 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`} // Add disabled style
         >
           <UploadCloud size={20} />
           <span>{file ? 'Change Picture' : 'Upload Picture'}</span>
@@ -113,11 +126,12 @@ const SignupProfile: React.FC = () => {
           id="profilePicture"
           name="profilePicture"
           className="hidden"
-          accept="image/png, image/jpeg, image/webp"
+          accept="image/png, image/jpeg, image/webp" // Accepted types
           onChange={handleFileChange}
+          disabled={loading} // Disable input while loading
         />
         <p className="text-xs text-gray-500 text-center">
-          PNG, JPG, or WEBP. <br /> 5MB max.
+          PNG, JPG, or WEBP. <br /> 5MB max. {/* */}
         </p>
       </div>
     </AuthForm>

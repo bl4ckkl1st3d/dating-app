@@ -13,6 +13,9 @@ import { userService, UserProfile,PotentialMatchesFilters } from "../services/us
 import { useAuth } from "../context/AuthContext"; //
 import { SERVER_BASE_URL } from '../lib/api'; //
 import { useFilters } from '../context/FilterContext';
+import { useNavigate } from 'react-router-dom';
+import { MatchData } from '../services/message.service';
+
 
 // Helper function to construct full image URL (similar to EditProfile)
 const getFullImageUrl = (relativePath: string | null | undefined): string => {
@@ -28,63 +31,89 @@ const getFullImageUrl = (relativePath: string | null | undefined): string => {
 };
 
 // --- Match Screen Component ---
+// --- Match Screen Component ---
 const MatchScreen: React.FC<{
-  currentUserProfile: UserProfile; // Renamed for clarity
-  matchedUser: UserProfile; // This will now include matchId
-  onClose: (matchIdToMark?: number) => void; // Pass matchId back on close
+  currentUserProfile: UserProfile;
+  matchedUser: UserProfile; // Includes matchId
+  onClose: (matchIdToMark?: number) => void;
 }> = ({ currentUserProfile, matchedUser, onClose }) => {
     const currentUserImageUrl = getFullImageUrl(currentUserProfile.profile_picture_url);
+    const navigate = useNavigate(); // <-- Get navigate function
+    const { setMatchIdToOpen } = useAuth(); // <-- Get the setter function
 
-    // Call onClose *with* the matchId when closing
     const handleClose = () => {
         onClose(matchedUser.matchId);
     };
 
+    // *** Handler for Send Message button ***
+    const handleSendMessageClick = () => {
+        if (!matchedUser.matchId) {
+            console.error("[MatchScreen] Cannot navigate, matchedUser.matchId is missing!");
+            return;
+        }
+        console.log(`[MatchScreen] Setting matchIdToOpen: ${matchedUser.matchId} in context.`);
+        // 1. Set the ID in context
+        setMatchIdToOpen(matchedUser.matchId);
+
+        console.log(`[MatchScreen] Navigating to messages.`);
+        // 2. Navigate (without state)
+        navigate('/messages');
+
+        // 3. Trigger close logic (marks match as seen, handles dashboard state)
+        // This is okay now because Messages will read the context, not location state
+        console.log(`[MatchScreen] Calling onClose for matchId: ${matchedUser.matchId}.`);
+        onClose(matchedUser.matchId);
+    };
+    // *** End Handler ***
+
+
     return (
         <motion.div
-          className="fixed inset-0 bg-gradient-to-br from-pink-400 via-purple-500 to-indigo-600 z-50 flex flex-col items-center justify-center p-4"
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.8 }}
-          transition={{ duration: 0.3 }}
+           className="fixed inset-0 bg-gradient-to-br from-pink-400 via-purple-500 to-indigo-600 z-50 flex flex-col items-center justify-center p-4"
+           initial={{ opacity: 0, scale: 0.8 }}
+           animate={{ opacity: 1, scale: 1 }}
+           exit={{ opacity: 0, scale: 0.8 }}
+           transition={{ duration: 0.3 }}
         >
-          <motion.h1
-            className="text-5xl md:text-6xl font-extrabold text-white mb-8 drop-shadow-lg"
-            initial={{ y: -50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2, type: "spring" }}
-          >
-            It's a Match!
-          </motion.h1>
+           <motion.h1
+             className="text-5xl md:text-6xl font-extrabold text-white mb-8 drop-shadow-lg"
+             initial={{ y: -50, opacity: 0 }}
+             animate={{ y: 0, opacity: 1 }}
+             transition={{ delay: 0.2, type: "spring" }}
+           >
+             It's a Match!
+           </motion.h1>
 
-          <div className="flex items-center justify-center space-x-4 md:space-x-8 mb-10">
-            {/* Current User Profile Pic */}
-            <motion.div
-              className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-white overflow-hidden shadow-lg"
-              initial={{ x: -100, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: 0.4, type: "spring" }}
-            >
-              <img src={currentUserImageUrl} alt={currentUserProfile.name} className="w-full h-full object-cover" />
-            </motion.div>
+           <div className="flex items-center justify-center space-x-4 md:space-x-8 mb-10">
+             {/* Current User Profile Pic */}
+             <motion.div
+               className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-white overflow-hidden shadow-lg"
+               initial={{ x: -100, opacity: 0 }}
+               animate={{ x: 0, opacity: 1 }}
+               transition={{ delay: 0.4, type: "spring" }}
+             >
+               <img src={currentUserImageUrl} alt={currentUserProfile.name} className="w-full h-full object-cover" />
+             </motion.div>
 
-            {/* Matched User Profile Pic */}
-            <motion.div
-              className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-white overflow-hidden shadow-lg"
-              initial={{ x: 100, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: 0.4, type: "spring" }}
-            >
-              <img src={matchedUser.imageUrl || 'https://via.placeholder.com/400?text=No+Image'} alt={matchedUser.name} className="w-full h-full object-cover" />
-            </motion.div>
-          </div>
+             {/* Matched User Profile Pic */}
+             <motion.div
+               className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-white overflow-hidden shadow-lg"
+               initial={{ x: 100, opacity: 0 }}
+               animate={{ x: 0, opacity: 1 }}
+               transition={{ delay: 0.4, type: "spring" }}
+             >
+               <img src={matchedUser.imageUrl || 'https://via.placeholder.com/400?text=No+Image'} alt={matchedUser.name} className="w-full h-full object-cover" />
+             </motion.div>
+           </div>
 
-          <p className="text-xl text-white font-medium mb-10 text-center drop-shadow">
-            You and {matchedUser.name} liked each other!
-          </p>
+           <p className="text-xl text-white font-medium mb-10 text-center drop-shadow">
+             You and {matchedUser.name} liked each other!
+           </p>
 
           <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4 w-full max-w-md">
+             {/* *** Attach onClick handler to Send Message button *** */}
              <motion.button
+                onClick={handleSendMessageClick} // <-- Call the handler
                 className="flex-1 bg-white text-pink-500 py-3 px-6 rounded-full font-semibold text-lg shadow-md hover:bg-gray-100 transition"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -94,8 +123,9 @@ const MatchScreen: React.FC<{
               >
                 <MessageSquare className="inline mr-2 -mt-1" size={20}/> Send a Message
               </motion.button>
+              {/* Keep Swiping button remains the same */}
               <motion.button
-                onClick={handleClose} // <-- Use handleClose
+                onClick={handleClose}
                 className="flex-1 bg-white/30 text-white py-3 px-6 rounded-full font-semibold text-lg shadow-md hover:bg-white/40 transition"
                  whileHover={{ scale: 1.05 }}
                  whileTap={{ scale: 0.95 }}
