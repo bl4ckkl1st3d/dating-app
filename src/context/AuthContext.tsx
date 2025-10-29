@@ -68,8 +68,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Login, Register, Logout functions remain largely the same
   const login = async (email: string, password: string) => {
-    const data = await authService.login({ email, password }); //
-    setUser(data.user);
+    try {
+      // authService.login saves the token to localStorage
+      await authService.login({ email, password }); //
+      // Now that the token is set, fetch the most up-to-date user data
+      await fetchCurrentUser(); // <--- ADD THIS CALL
+    } catch (error) {
+       console.error('❌ [AuthContext] Login failed:', error);
+       setUser(null); // Ensure user is null on login failure
+       localStorage.removeItem('token'); // Clear token on login failure
+       throw error; // Re-throw so Login page can display the error
+    }
   };
 
   const register = async (
@@ -79,14 +88,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     age?: number,
     bio?: string
   ) => {
-    console.log('🔐 [AuthContext] Register called with:', { email, name, age }); //
+    console.log('🔐 [AuthContext] Register called with:', { email, name, age });
     try {
-      const data = await authService.register({ email, password, name, age, bio }); //
-      console.log('✅ [AuthContext] Register successful, user data received:', data.user); //
-      setUser(data.user);
+      // authService.register saves the token to localStorage
+      await authService.register({ email, password, name, age, bio }); //
+      // Now that the token is set, fetch the user data
+      await fetchCurrentUser(); // <--- ADD THIS CALL
     } catch (error) {
-      console.error('❌ [AuthContext] Register failed:', error); //
-      throw error;
+      console.error('❌ [AuthContext] Register failed:', error);
+      setUser(null); // Ensure user is null on register failure
+      localStorage.removeItem('token'); // Clear token on register failure
+      throw error; // Re-throw so Signup page can display the error
     }
   };
 
